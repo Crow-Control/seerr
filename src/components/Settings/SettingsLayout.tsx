@@ -19,7 +19,6 @@ const messages = defineMessages('components.Settings', {
   menuJobs: 'Jobs & Cache',
   menuAbout: 'About',
   menuMetadataProviders: 'Metadata Providers',
-  menuMusicMetadata: 'Music Metadata',
 });
 
 type SettingsLayoutProps = {
@@ -65,11 +64,6 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       text: intl.formatMessage(messages.menuMetadataProviders),
       route: '/settings/metadata',
       regex: /^\/settings\/metadata/,
-    },
-    {
-      text: intl.formatMessage(messages.menuMusicMetadata),
-      route: '/settings/music-metadata',
-      regex: /^\/settings\/music-metadata/,
     },
     {
       text: intl.formatMessage(messages.menuNotifications),
