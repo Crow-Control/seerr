@@ -3,7 +3,6 @@ import Modal from '@app/components/Common/Modal';
 import type { RequestOverrides } from '@app/components/RequestModal/AdvancedRequester';
 import AdvancedRequester from '@app/components/RequestModal/AdvancedRequester';
 import QuotaDisplay from '@app/components/RequestModal/QuotaDisplay';
-import useToasts from '@app/hooks/useToasts';
 import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
@@ -12,23 +11,22 @@ import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { NonFunctionProperties } from '@server/interfaces/api/common';
 import type { QuotaResponse } from '@server/interfaces/api/userInterfaces';
 import { Permission } from '@server/lib/permissions';
-import type { MovieDetails } from '@server/models/Movie';
+import type { MusicDetails } from '@server/models/Music';
 import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
+import { useToasts } from 'react-toast-notifications';
 import useSWR, { mutate } from 'swr';
 
 const messages = defineMessages('components.RequestModal', {
   requestadmin: 'This request will be approved automatically.',
   requestSuccess: '<strong>{title}</strong> requested successfully!',
   requestCancel: 'Request for <strong>{title}</strong> canceled.',
-  requestmovietitle: 'Request Movie',
-  requestmovie4ktitle: 'Request Movie in 4K',
+  requestmusictitle: 'Request Music',
   edit: 'Edit Request',
   approve: 'Approve Request',
   cancel: 'Cancel Request',
-  pendingrequest: 'Pending Movie Request',
-  pending4krequest: 'Pending 4K Movie Request',
+  pendingrequest: 'Pending Album Request',
   requestfrom: "{username}'s request is pending approval.",
   errorediting: 'Something went wrong while editing the request.',
   requestedited: 'Request for <strong>{title}</strong> edited successfully!',
@@ -38,27 +36,25 @@ const messages = defineMessages('components.RequestModal', {
 });
 
 interface RequestModalProps extends React.HTMLAttributes<HTMLDivElement> {
-  tmdbId?: number;
-  is4k?: boolean;
-  editRequest?: NonFunctionProperties<MediaRequest>;
+  mbId?: string;
   onCancel?: () => void;
   onComplete?: (newStatus: MediaStatus) => void;
   onUpdating?: (isUpdating: boolean) => void;
+  editRequest?: NonFunctionProperties<MediaRequest>;
 }
 
-const MovieRequestModal = ({
+const MusicRequestModal = ({
+  mbId,
   onCancel,
   onComplete,
-  tmdbId,
   onUpdating,
   editRequest,
-  is4k = false,
 }: RequestModalProps) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [requestOverrides, setRequestOverrides] =
     useState<RequestOverrides | null>(null);
   const { addToast } = useToasts();
-  const { data, error } = useSWR<MovieDetails>(`/api/v1/movie/${tmdbId}`, {
+  const { data, error } = useSWR<MusicDetails>(`/api/v1/music/${mbId}`, {
     revalidateOnMount: true,
   });
   const intl = useIntl();
@@ -90,26 +86,20 @@ const MovieRequestModal = ({
           tags: requestOverrides.tags,
         };
       }
+
       const response = await axios.post<MediaRequest>('/api/v1/request', {
-        mediaId: data?.id,
-        mediaType: 'movie',
-        is4k,
+        mediaId: data?.mbId,
+        mediaType: 'music',
         ...overrideParams,
       });
+
       mutate('/api/v1/request?filter=all&take=10&sort=modified&skip=0');
       mutate('/api/v1/request/count');
 
       if (response.data) {
         if (onComplete) {
           onComplete(
-            hasPermission(
-              is4k ? Permission.AUTO_APPROVE_4K : Permission.AUTO_APPROVE
-            ) ||
-              hasPermission(
-                is4k
-                  ? Permission.AUTO_APPROVE_4K_MOVIE
-                  : Permission.AUTO_APPROVE_MOVIE
-              )
+            hasPermission(Permission.AUTO_APPROVE)
               ? MediaStatus.PROCESSING
               : MediaStatus.PENDING
           );
@@ -124,7 +114,7 @@ const MovieRequestModal = ({
           { appearance: 'success', autoDismiss: true }
         );
       }
-    } catch {
+    } catch (e) {
       addToast(intl.formatMessage(messages.requesterror), {
         appearance: 'error',
         autoDismiss: true,
@@ -132,24 +122,14 @@ const MovieRequestModal = ({
     } finally {
       setIsUpdating(false);
     }
-  }, [
-    requestOverrides,
-    data?.id,
-    data?.title,
-    is4k,
-    onComplete,
-    addToast,
-    intl,
-    hasPermission,
-  ]);
+  }, [data, onComplete, addToast, requestOverrides, hasPermission, intl]);
 
   const cancelRequest = async () => {
     setIsUpdating(true);
 
     try {
-      const response = await axios.delete<MediaRequest>(
-        `/api/v1/request/${editRequest?.id}`
-      );
+      const response = await axios.delete(`/api/v1/request/${editRequest?.id}`);
+
       mutate('/api/v1/request?filter=all&take=10&sort=modified&skip=0');
       mutate('/api/v1/request/count');
 
@@ -167,7 +147,7 @@ const MovieRequestModal = ({
           { appearance: 'success', autoDismiss: true }
         );
       }
-    } catch {
+    } catch (e) {
       setIsUpdating(false);
     }
   };
@@ -177,7 +157,7 @@ const MovieRequestModal = ({
 
     try {
       await axios.put(`/api/v1/request/${editRequest?.id}`, {
-        mediaType: 'movie',
+        mediaType: 'music',
         serverId: requestOverrides?.server,
         profileId: requestOverrides?.profile,
         rootFolder: requestOverrides?.folder,
@@ -188,6 +168,7 @@ const MovieRequestModal = ({
       if (alsoApproveRequest) {
         await axios.post(`/api/v1/request/${editRequest?.id}/approve`);
       }
+
       mutate('/api/v1/request?filter=all&take=10&sort=modified&skip=0');
       mutate('/api/v1/request/count');
 
@@ -212,7 +193,7 @@ const MovieRequestModal = ({
       if (onComplete) {
         onComplete(MediaStatus.PENDING);
       }
-    } catch {
+    } catch (e) {
       addToast(<span>{intl.formatMessage(messages.errorediting)}</span>, {
         appearance: 'error',
         autoDismiss: true,
@@ -230,31 +211,30 @@ const MovieRequestModal = ({
         loading={!data && !error}
         backgroundClickable
         onCancel={onCancel}
-        title={intl.formatMessage(
-          is4k ? messages.pending4krequest : messages.pendingrequest
-        )}
-        subTitle={data?.title}
+        title={intl.formatMessage(messages.pendingrequest)}
+        subTitle={data ? `${data.artist.name} - ${data.title}` : undefined}
+        backdrop={data?.artistBackdrop || data?.artistThumb || data?.posterPath}
         onOk={() =>
           hasPermission(Permission.MANAGE_REQUESTS)
             ? updateRequest(true)
             : hasPermission(Permission.REQUEST_ADVANCED)
-              ? updateRequest()
-              : cancelRequest()
+            ? updateRequest()
+            : cancelRequest()
         }
         okDisabled={isUpdating}
         okText={
           hasPermission(Permission.MANAGE_REQUESTS)
             ? intl.formatMessage(messages.approve)
             : hasPermission(Permission.REQUEST_ADVANCED)
-              ? intl.formatMessage(messages.edit)
-              : intl.formatMessage(messages.cancel)
+            ? intl.formatMessage(messages.edit)
+            : intl.formatMessage(messages.cancel)
         }
         okButtonType={
           hasPermission(Permission.MANAGE_REQUESTS)
             ? 'success'
             : hasPermission(Permission.REQUEST_ADVANCED)
-              ? 'primary'
-              : 'danger'
+            ? 'primary'
+            : 'danger'
         }
         onSecondary={
           isOwner &&
@@ -277,7 +257,6 @@ const MovieRequestModal = ({
         }
         secondaryButtonType="danger"
         cancelText={intl.formatMessage(globalMessages.close)}
-        backdrop={`https://image.tmdb.org/t/p/w1920_and_h800_multi_faces/${data?.backdropPath}`}
       >
         {isOwner
           ? intl.formatMessage(messages.pendingapproval)
@@ -287,8 +266,8 @@ const MovieRequestModal = ({
         {(hasPermission(Permission.REQUEST_ADVANCED) ||
           hasPermission(Permission.MANAGE_REQUESTS)) && (
           <AdvancedRequester
-            type="movie"
-            is4k={is4k}
+            type="music"
+            is4k={false}
             requestUser={editRequest.requestedBy}
             defaultOverrides={{
               folder: editRequest.rootFolder,
@@ -306,11 +285,7 @@ const MovieRequestModal = ({
   }
 
   const hasAutoApprove = hasPermission(
-    [
-      Permission.MANAGE_REQUESTS,
-      is4k ? Permission.AUTO_APPROVE_4K : Permission.AUTO_APPROVE,
-      is4k ? Permission.AUTO_APPROVE_4K_MOVIE : Permission.AUTO_APPROVE_MOVIE,
-    ],
+    [Permission.MANAGE_REQUESTS, Permission.AUTO_APPROVE],
     { type: 'or' }
   );
 
@@ -320,22 +295,18 @@ const MovieRequestModal = ({
       backgroundClickable
       onCancel={onCancel}
       onOk={sendRequest}
-      okDisabled={isUpdating || quota?.movie.restricted}
-      title={intl.formatMessage(
-        is4k ? messages.requestmovie4ktitle : messages.requestmovietitle
-      )}
-      subTitle={data?.title}
+      okDisabled={isUpdating || quota?.music?.restricted}
+      title={intl.formatMessage(messages.requestmusictitle)}
+      subTitle={data ? `${data.artist.name} - ${data.title}` : undefined}
       okText={
         isUpdating
           ? intl.formatMessage(globalMessages.requesting)
-          : intl.formatMessage(
-              is4k ? globalMessages.request4k : globalMessages.request
-            )
+          : intl.formatMessage(globalMessages.request)
       }
-      okButtonType={'primary'}
-      backdrop={`https://image.tmdb.org/t/p/w1920_and_h800_multi_faces/${data?.backdropPath}`}
+      okButtonType="primary"
+      backdrop={data?.artistBackdrop || data?.artistThumb || data?.posterPath}
     >
-      {hasAutoApprove && !quota?.movie.restricted && (
+      {hasAutoApprove && !quota?.music?.restricted && (
         <div className="mt-6">
           <Alert
             title={intl.formatMessage(messages.requestadmin)}
@@ -343,10 +314,10 @@ const MovieRequestModal = ({
           />
         </div>
       )}
-      {(quota?.movie.limit ?? 0) > 0 && (
+      {(quota?.music?.limit ?? 0) > 0 && (
         <QuotaDisplay
-          mediaType="movie"
-          quota={quota?.movie}
+          mediaType="music"
+          quota={quota?.music}
           userOverride={
             requestOverrides?.user && requestOverrides.user.id !== user?.id
               ? requestOverrides?.user?.id
@@ -357,8 +328,8 @@ const MovieRequestModal = ({
       {(hasPermission(Permission.REQUEST_ADVANCED) ||
         hasPermission(Permission.MANAGE_REQUESTS)) && (
         <AdvancedRequester
-          type="movie"
-          is4k={is4k}
+          type="music"
+          is4k={false}
           onChange={(overrides) => {
             setRequestOverrides(overrides);
           }}
@@ -368,4 +339,4 @@ const MovieRequestModal = ({
   );
 };
 
-export default MovieRequestModal;
+export default MusicRequestModal;
