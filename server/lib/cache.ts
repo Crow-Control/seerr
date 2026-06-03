@@ -2,8 +2,13 @@ import NodeCache from 'node-cache';
 
 export type AvailableCacheIds =
   | 'tmdb'
+  | 'musicbrainz'
+  | 'listenbrainz'
+  | 'covertartarchive'
+  | 'tadb'
   | 'radarr'
   | 'sonarr'
+  | 'lidarr'
   | 'rt'
   | 'imdb'
   | 'github'
@@ -46,6 +51,22 @@ class Cache {
 class CacheManager {
   private availableCaches: Record<AvailableCacheIds, Cache> = {
     tmdb: new Cache('tmdb', 'The Movie Database API', {
+      stdTtl: 21600,
+      checkPeriod: 60 * 30,
+    }),
+    musicbrainz: new Cache('musicbrainz', 'MusicBrainz API', {
+      stdTtl: 21600,
+      checkPeriod: 60 * 30,
+    }),
+    listenbrainz: new Cache('listenbrainz', 'ListenBrainz API', {
+      stdTtl: 21600,
+      checkPeriod: 60 * 30,
+    }),
+    covertartarchive: new Cache('covertartarchive', 'CovertArtArchive API', {
+      stdTtl: 21600,
+      checkPeriod: 60 * 30,
+    }),
+    tadb: new Cache('tadb', 'The Audio Database API', {
       stdTtl: 21600,
       checkPeriod: 60 * 30,
     }),

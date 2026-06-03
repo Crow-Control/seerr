@@ -18,7 +18,7 @@ export interface Library {
   id: string;
   name: string;
   enabled: boolean;
-  type: 'show' | 'movie';
+  type: 'show' | 'movie' | 'music';
   lastScan?: number;
 }
 
@@ -108,6 +108,11 @@ export interface SonarrSettings extends DVRSettings {
   monitorNewItems: 'all' | 'none';
 }
 
+export interface LidarrSettings extends DVRSettings {
+  activeMetadataProfileId?: number;
+  activeMetadataProfileName?: string;
+}
+
 interface Quota {
   quotaLimit?: number;
   quotaDays?: number;
@@ -143,6 +148,7 @@ export interface MainSettings {
   defaultQuotas: {
     movie: Quota;
     tv: Quota;
+    music: Quota;
   };
   hideAvailable: boolean;
   hideBlocklisted: boolean;
@@ -417,6 +423,7 @@ class Settings {
         defaultQuotas: {
           movie: {},
           tv: {},
+          music: {},
         },
         hideAvailable: false,
         hideBlocklisted: false,
@@ -461,8 +468,8 @@ class Settings {
         anime: MetadataProviderType.TMDB,
       },
       radarr: [],
-      sonarr: [],
       lidarr: [],
+      sonarr: [],
       public: {
         initialized: false,
       },
@@ -694,6 +701,14 @@ class Settings {
 
   set radarr(data: RadarrSettings[]) {
     this.data.radarr = data;
+  }
+
+  get lidarr(): LidarrSettings[] {
+    return this.data.lidarr;
+  }
+
+  set lidarr(data: LidarrSettings[]) {
+    this.data.lidarr = data;
   }
 
   get sonarr(): SonarrSettings[] {
