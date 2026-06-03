@@ -243,18 +243,19 @@ mediaRoutes.delete(
       }
 
       if (!serviceSettings) {
+        const serviceType =
+          media.mediaType === MediaType.MOVIE ? 'Radarr' : 'Sonarr';
+
         logger.warn(
-          `There is no default ${
-            is4k ? '4K ' : '' + isMovie ? 'Radarr' : 'Sonarr'
-          }/ server configured. Did you set any of your ${
-            is4k ? '4K ' : '' + isMovie ? 'Radarr' : 'Sonarr'
-          } servers as default?`,
+          `There is no default ${is4k ? '4K ' : ''}${serviceType} server configured.`,
           {
             label: 'Media Request',
             mediaId: media.id,
           }
         );
-        return;
+        return res
+          .status(500)
+          .json({ message: `No default ${serviceType} server configured` });
       }
 
       let service;
@@ -284,7 +285,7 @@ mediaRoutes.delete(
 
       return res.status(204).send();
     } catch (e) {
-      logger.error('Something went wrong fetching media in delete request', {
+      logger.error('Something went wrong deleting media file', {
         label: 'Media',
         message: e.message,
       });
