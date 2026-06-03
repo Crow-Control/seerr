@@ -126,7 +126,7 @@ export interface PlexWatchlistItem {
   ratingKey: string;
   tmdbId: number;
   tvdbId?: number;
-  type: 'movie' | 'show';
+  type: 'movie' | 'show' | 'album';
   title: string;
 }
 

@@ -1,14 +1,7 @@
-import ExternalAPI from '@server/api/externalapi';
 import type { Library, PlexSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-
-interface PlexStatusResponse {
-  MediaContainer: {
-    machineIdentifier: string;
-    friendlyName: string;
-  };
-}
+import NodePlexAPI from 'plex-api';
 
 export interface PlexLibraryItem {
   ratingKey: string;
@@ -23,7 +16,7 @@ export interface PlexLibraryItem {
   Guid?: {
     id: string;
   }[];
-  type: 'movie' | 'show' | 'season' | 'episode';
+  type: 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'track';
   Media: Media[];
 }
 
@@ -35,7 +28,7 @@ interface PlexLibraryResponse {
 }
 
 export interface PlexLibrary {
-  type: 'show' | 'movie';
+  type: 'show' | 'movie' | 'artist';
   key: string;
   title: string;
   agent: string;
@@ -51,7 +44,7 @@ export interface PlexMetadata {
   ratingKey: string;
   parentRatingKey?: string;
   guid: string;
-  type: 'movie' | 'show' | 'season';
+  type: 'movie' | 'show' | 'season' | 'artist' | 'album' | 'track';
   title: string;
   Guid: {
     id: string;
@@ -91,7 +84,9 @@ interface PlexMetadataResponse {
   };
 }
 
-class PlexAPI extends ExternalAPI {
+class PlexAPI {
+  private plexClient: NodePlexAPI;
+
   constructor({
     plexToken,
     plexSettings,
@@ -102,33 +97,48 @@ class PlexAPI extends ExternalAPI {
     timeout?: number;
   }) {
     const settings = getSettings();
-    const settingsPlex = plexSettings ?? settings.plex;
+    let settingsPlex: PlexSettings | undefined;
+    plexSettings
+      ? (settingsPlex = plexSettings)
+      : (settingsPlex = getSettings().plex);
 
-    const protocol = settingsPlex.useSsl ? 'https' : 'http';
-    const baseUrl = `${protocol}://${settingsPlex.ip}:${settingsPlex.port}`;
-
-    super(
-      baseUrl,
-      {},
-      {
-        timeout,
-        headers: {
-          'X-Plex-Token': plexToken ?? '',
-          'X-Plex-Client-Identifier': settings.clientId,
-          'X-Plex-Product': 'Seerr',
-          'X-Plex-Device-Name': 'Seerr',
-          'X-Plex-Platform': 'Seerr',
+    this.plexClient = new NodePlexAPI({
+      hostname: settingsPlex.ip,
+      port: settingsPlex.port,
+      https: settingsPlex.useSsl,
+      timeout: timeout,
+      token: plexToken ?? undefined,
+      authenticator: {
+        authenticate: (
+          _plexApi,
+          cb: (err?: string, token?: string) => void
+        ) => {
+          if (!plexToken) {
+            return cb('Plex Token not found!');
+          }
+          cb(undefined, plexToken);
         },
-      }
-    );
+      },
+      // requestOptions: {
+      //   includeChildren: 1,
+      // },
+      options: {
+        identifier: settings.clientId,
+        product: 'Seerr',
+        deviceName: 'Seerr',
+        platform: 'Seerr',
+      },
+    });
   }
 
-  public async getStatus(): Promise<PlexStatusResponse> {
-    return await this.get('/');
+  public async getStatus() {
+    return await this.plexClient.query('/');
   }
 
   public async getLibraries(): Promise<PlexLibrary[]> {
-    const response = await this.get<PlexLibrariesResponse>('/library/sections');
+    const response = await this.plexClient.query<PlexLibrariesResponse>(
+      '/library/sections'
+    );
 
     return response.MediaContainer.Directory;
   }
@@ -142,7 +152,10 @@ class PlexAPI extends ExternalAPI {
       const newLibraries: Library[] = libraries
         // Remove libraries that are not movie or show
         .filter(
-          (library) => library.type === 'movie' || library.type === 'show'
+          (library) =>
+            library.type === 'movie' ||
+            library.type === 'show' ||
+            library.type === 'artist'
         )
         // Remove libraries that do not have a metadata agent set (usually personal video libraries)
         .filter((library) => library.agent !== 'com.plexapp.agents.none')
@@ -155,7 +168,7 @@ class PlexAPI extends ExternalAPI {
             id: library.key,
             name: library.title,
             enabled: existing?.enabled ?? false,
-            type: library.type,
+            type: library.type === 'artist' ? 'music' : library.type,
             lastScan: existing?.lastScan,
           };
         });
@@ -177,15 +190,13 @@ class PlexAPI extends ExternalAPI {
     id: string,
     { offset = 0, size = 50 }: { offset?: number; size?: number } = {}
   ): Promise<{ totalSize: number; items: PlexLibraryItem[] }> {
-    const response = await this.get<PlexLibraryResponse>(
-      `/library/sections/${id}/all?includeGuids=1`,
-      {
-        headers: {
-          'X-Plex-Container-Start': `${offset}`,
-          'X-Plex-Container-Size': `${size}`,
-        },
-      }
-    );
+    const response = await this.plexClient.query<PlexLibraryResponse>({
+      uri: `/library/sections/${id}/all?includeGuids=1`,
+      extraHeaders: {
+        'X-Plex-Container-Start': `${offset}`,
+        'X-Plex-Container-Size': `${size}`,
+      },
+    });
 
     return {
       totalSize: response.MediaContainer.totalSize,
@@ -197,7 +208,7 @@ class PlexAPI extends ExternalAPI {
     key: string,
     options: { includeChildren?: boolean } = {}
   ): Promise<PlexMetadata> {
-    const response = await this.get<PlexMetadataResponse>(
+    const response = await this.plexClient.query<PlexMetadataResponse>(
       `/library/metadata/${key}${
         options.includeChildren ? '?includeChildren=1' : ''
       }`
@@ -207,7 +218,7 @@ class PlexAPI extends ExternalAPI {
   }
 
   public async getChildrenMetadata(key: string): Promise<PlexMetadata[]> {
-    const response = await this.get<PlexMetadataResponse>(
+    const response = await this.plexClient.query<PlexMetadataResponse>(
       `/library/metadata/${key}/children`
     );
 
@@ -219,19 +230,24 @@ class PlexAPI extends ExternalAPI {
     options: { addedAt: number } = {
       addedAt: Date.now() - 1000 * 60 * 60,
     },
-    mediaType: 'movie' | 'show'
+    mediaType: 'movie' | 'show' | 'album'
   ): Promise<PlexLibraryItem[]> {
-    const response = await this.get<PlexLibraryResponse>(
-      `/library/sections/${id}/all?type=${
-        mediaType === 'show' ? '4' : '1'
-      }&sort=addedAt%3Adesc&addedAt>>=${Math.floor(options.addedAt / 1000)}`,
-      {
-        headers: {
-          'X-Plex-Container-Start': '0',
-          'X-Plex-Container-Size': '500',
-        },
-      }
-    );
+    let typeCode = '1';
+    if (mediaType === 'show') {
+      typeCode = '4';
+    } else if (mediaType === 'album') {
+      typeCode = '9';
+    }
+
+    const response = await this.plexClient.query<PlexLibraryResponse>({
+      uri: `/library/sections/${id}/all?type=${typeCode}&sort=addedAt%3Adesc&addedAt>>=${Math.floor(
+        options.addedAt / 1000
+      )}`,
+      extraHeaders: {
+        'X-Plex-Container-Start': `0`,
+        'X-Plex-Container-Size': `500`,
+      },
+    });
 
     return response.MediaContainer.Metadata;
   }
