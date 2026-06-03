@@ -28,10 +28,9 @@ import Season from '@app/components/TvDetails/Season';
 import useDeepLinks from '@app/hooks/useDeepLinks';
 import useLocale from '@app/hooks/useLocale';
 import useSettings from '@app/hooks/useSettings';
-import useToasts from '@app/hooks/useToasts';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
-import ErrorPage from '@app/pages/_error';
+import Error from '@app/pages/_error';
 import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
@@ -56,15 +55,16 @@ import {
   MediaType,
 } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
-import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import type { Crew } from '@server/models/common';
+import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import axios from 'axios';
 import { countries } from 'country-flag-icons';
 import 'country-flag-icons/3x2/flags.css';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
+import { useToasts } from 'react-toast-notifications';
 import useSWR from 'swr';
 
 const messages = defineMessages('components.TvDetails', {
@@ -174,7 +174,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   }
 
   if (!data) {
-    return <ErrorPage statusCode={404} />;
+    return <Error statusCode={404} />;
   }
 
   const mediaLinks: PlayButtonLink[] = [];
@@ -227,8 +227,8 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   const discoverRegion = user?.settings?.discoverRegion
     ? user.settings.discoverRegion
     : settings.currentSettings.discoverRegion
-      ? settings.currentSettings.discoverRegion
-      : 'US';
+    ? settings.currentSettings.discoverRegion
+    : 'US';
   const seriesAttributes: React.ReactNode[] = [];
 
   const contentRating = data.contentRatings.results.find(
@@ -264,12 +264,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
           </Link>
         ))
         .reduce((prev, curr) => (
-          <Fragment key={`${prev.key}-${curr.key}`}>
+          <>
             {intl.formatMessage(globalMessages.delimitedlist, {
               a: prev,
               b: curr,
             })}
-          </Fragment>
+          </>
         ))
     );
   }
@@ -320,8 +320,8 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   const streamingRegion = user?.settings?.streamingRegion
     ? user.settings.streamingRegion
     : settings.currentSettings.streamingRegion
-      ? settings.currentSettings.streamingRegion
-      : 'US';
+    ? settings.currentSettings.streamingRegion
+    : 'US';
   const streamingProviders =
     data?.watchProviders?.find(
       (provider) => provider.iso_3166_1 === streamingRegion
@@ -386,9 +386,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
     setIsUpdating(true);
 
     try {
-      await axios.delete(
-        `/api/v1/watchlist/${tv?.id}?mediaType=${MediaType.TV}`
-      );
+      await axios.delete('/api/v1/watchlist/' + tv?.id);
 
       addToast(
         <span>
@@ -595,11 +593,11 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
               seriesAttributes
                 .map((t, k) => <span key={k}>{t}</span>)
                 .reduce((prev, curr) => (
-                  <Fragment key={`${prev.key}-${curr.key}`}>
+                  <>
                     {prev}
                     <span>|</span>
                     {curr}
-                  </Fragment>
+                  </>
                 ))}
           </span>
         </div>
@@ -851,7 +849,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                         <Disclosure.Button
                           className={`mt-2 flex w-full items-center justify-between space-x-2 border-gray-700 bg-gray-800 px-4 py-2 text-gray-200 ${
                             open
-                              ? 'rounded-t-md border-l border-r border-t'
+                              ? 'rounded-t-md border-t border-l border-r'
                               : 'rounded-md border'
                           }`}
                         >
@@ -1271,12 +1269,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                       </Link>
                     ))
                     .reduce((prev, curr) => (
-                      <Fragment key={`${prev.key}-${curr.key}`}>
+                      <>
                         {intl.formatMessage(globalMessages.delimitedlist, {
                           a: prev,
                           b: curr,
                         })}
-                      </Fragment>
+                      </>
                     ))}
                 </span>
               </div>
@@ -1287,7 +1285,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                 <span className="media-fact-value flex flex-row flex-wrap gap-5">
                   {streamingProviders.map((p) => {
                     return (
-                      <Tooltip content={p.name} key={`tooltip-${p.id}`}>
+                      <Tooltip content={p.name}>
                         <span
                           className="opacity-50 transition duration-300 hover:opacity-100"
                           key={`provider-${p.id}`}

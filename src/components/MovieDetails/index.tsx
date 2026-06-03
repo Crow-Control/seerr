@@ -25,7 +25,6 @@ import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
 import useLocale from '@app/hooks/useLocale';
 import useSettings from '@app/hooks/useSettings';
-import useToasts from '@app/hooks/useToasts';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import ErrorPage from '@app/pages/_error';
@@ -59,8 +58,9 @@ import 'country-flag-icons/3x2/flags.css';
 import { uniqBy } from 'lodash';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
+import { useToasts } from 'react-toast-notifications';
 import useSWR from 'swr';
 
 const messages = defineMessages('components.MovieDetails', {
@@ -232,8 +232,8 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
   const discoverRegion = user?.settings?.discoverRegion
     ? user.settings.discoverRegion
     : settings.currentSettings.discoverRegion
-      ? settings.currentSettings.discoverRegion
-      : 'US';
+    ? settings.currentSettings.discoverRegion
+    : 'US';
 
   const releases = data.releases.results.find(
     (r) => r.iso_3166_1 === discoverRegion
@@ -279,12 +279,12 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
           </Link>
         ))
         .reduce((prev, curr) => (
-          <Fragment key={`${prev.key}-${curr.key}`}>
+          <>
             {intl.formatMessage(globalMessages.delimitedlist, {
               a: prev,
               b: curr,
             })}
-          </Fragment>
+          </>
         ))
     );
   }
@@ -292,8 +292,8 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
   const streamingRegion = user?.settings?.streamingRegion
     ? user.settings.streamingRegion
     : settings.currentSettings.streamingRegion
-      ? settings.currentSettings.streamingRegion
-      : 'US';
+    ? settings.currentSettings.streamingRegion
+    : 'US';
   const streamingProviders =
     data?.watchProviders?.find(
       (provider) => provider.iso_3166_1 === streamingRegion
@@ -344,7 +344,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
           { appearance: 'success', autoDismiss: true }
         );
       }
-    } catch {
+    } catch (e) {
       addToast(intl.formatMessage(messages.watchlistError), {
         appearance: 'error',
         autoDismiss: true,
@@ -358,9 +358,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
   const onClickDeleteWatchlistBtn = async (): Promise<void> => {
     setIsUpdating(true);
     try {
-      await axios.delete(
-        `/api/v1/watchlist/${movie?.id}?mediaType=${MediaType.MOVIE}`
-      );
+      await axios.delete(`/api/v1/watchlist/${movie?.id}`);
 
       addToast(
         <span>
@@ -371,7 +369,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
         </span>,
         { appearance: 'info', autoDismiss: true }
       );
-    } catch {
+    } catch (e) {
       addToast(intl.formatMessage(messages.watchlistError), {
         appearance: 'error',
         autoDismiss: true,
@@ -553,11 +551,11 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
               movieAttributes
                 .map((t, k) => <span key={k}>{t}</span>)
                 .reduce((prev, curr) => (
-                  <Fragment key={`${prev.key}-${curr.key}`}>
+                  <>
                     {prev}
                     <span>|</span>
                     {curr}
-                  </Fragment>
+                  </>
                 ))}
           </span>
         </div>
@@ -1067,7 +1065,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                 <span className="media-fact-value flex flex-row flex-wrap gap-5">
                   {streamingProviders.map((p) => {
                     return (
-                      <Tooltip content={p.name} key={`tooltip-${p.id}`}>
+                      <Tooltip content={p.name}>
                         <span
                           className="opacity-50 transition duration-300 hover:opacity-100"
                           key={`provider-${p.id}`}
