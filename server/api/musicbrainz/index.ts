@@ -1,5 +1,6 @@
 import ExternalAPI from '@server/api/externalapi';
 import cacheManager from '@server/lib/cache';
+import { getSettings } from '@server/lib/settings';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
@@ -10,19 +11,25 @@ const purify = DOMPurify(window);
 
 class MusicBrainz extends ExternalAPI {
   constructor() {
+    const { musicbrainz } = getSettings().musicMetadata;
+    const headers: Record<string, string> = {
+      'User-Agent':
+        musicbrainz.userAgent || 'Seerr (https://github.com/seerr-team/seerr)',
+      Accept: 'application/json',
+    };
+    if (musicbrainz.authToken) {
+      headers.Authorization = `Token ${musicbrainz.authToken}`;
+    }
+    const maxRPS = musicbrainz.maxRPS > 0 ? musicbrainz.maxRPS : 1;
     super(
-      'https://musicbrainz.org/ws/2',
+      musicbrainz.baseUrl || 'https://musicbrainz.org/ws/2',
       {},
       {
-        headers: {
-          'User-Agent':
-            'Jellyseerr/1.0.0 (https://github.com/Fallenbagel/jellyseerr)',
-          Accept: 'application/json',
-        },
+        headers,
         nodeCache: cacheManager.getCache('musicbrainz').data,
         rateLimit: {
-          maxRequests: 1,
-          maxRPS: 1,
+          maxRequests: maxRPS,
+          maxRPS,
         },
       }
     );
@@ -59,8 +66,7 @@ class MusicBrainz extends ExternalAPI {
       return data['release-groups'];
     } catch (e) {
       throw new Error(
-        `[MusicBrainz] Failed to search albums: ${
-          e instanceof Error ? e.message : 'Unknown error'
+        `[MusicBrainz] Failed to search albums: ${e instanceof Error ? e.message : 'Unknown error'
         }`
       );
     }
@@ -97,8 +103,7 @@ class MusicBrainz extends ExternalAPI {
       return data.artists;
     } catch (e) {
       throw new Error(
-        `[MusicBrainz] Failed to search artists: ${
-          e instanceof Error ? e.message : 'Unknown error'
+        `[MusicBrainz] Failed to search artists: ${e instanceof Error ? e.message : 'Unknown error'
         }`
       );
     }
@@ -122,14 +127,27 @@ class MusicBrainz extends ExternalAPI {
     }
 
     try {
-      const safeUrl = `https://musicbrainz.org/artist/${artistMbid}/wikipedia-extract`;
+      const { musicbrainz } = getSettings().musicMetadata;
+      // The wikipedia-extract endpoint lives on the MB website root,
+      // not under /ws/2 — derive the host from the configured base URL.
+      let webRoot = 'https://musicbrainz.org';
+      try {
+        webRoot = new URL(musicbrainz.baseUrl).origin;
+      } catch {
+        /* fall back to default */
+      }
+      const safeUrl = `${webRoot}/artist/${artistMbid}/wikipedia-extract`;
 
       const response = await axios.get(safeUrl, {
         headers: {
           Accept: 'application/json',
           'Accept-Language': language,
           'User-Agent':
-            'Jellyseerr/1.0.0 (https://github.com/Fallenbagel/jellyseerr)',
+            musicbrainz.userAgent ||
+            'Seerr (https://github.com/seerr-team/seerr)',
+          ...(musicbrainz.authToken
+            ? { Authorization: `Token ${musicbrainz.authToken}` }
+            : {}),
         },
       });
 
@@ -150,8 +168,7 @@ class MusicBrainz extends ExternalAPI {
       };
     } catch (error) {
       throw new Error(
-        `[MusicBrainz] Failed to fetch Wikipedia extract: ${
-          error instanceof Error ? error.message : 'Unknown error'
+        `[MusicBrainz] Failed to fetch Wikipedia extract: ${error instanceof Error ? error.message : 'Unknown error'
         }`
       );
     }
@@ -181,8 +198,7 @@ class MusicBrainz extends ExternalAPI {
       return data['release-group']?.id ?? null;
     } catch (e) {
       throw new Error(
-        `[MusicBrainz] Failed to fetch release group: ${
-          e instanceof Error ? e.message : 'Unknown error'
+        `[MusicBrainz] Failed to fetch release group: ${e instanceof Error ? e.message : 'Unknown error'
         }`
       );
     }

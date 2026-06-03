@@ -1,5 +1,6 @@
 import ExternalAPI from '@server/api/externalapi';
 import cacheManager from '@server/lib/cache';
+import { getSettings } from '@server/lib/settings';
 import type {
   LbAlbumDetails,
   LbArtistDetails,
@@ -9,11 +10,19 @@ import type {
 } from './interfaces';
 
 class ListenBrainzAPI extends ExternalAPI {
+  private webBaseUrl: string;
+
   constructor() {
+    const { listenbrainz } = getSettings().musicMetadata;
+    const headers: Record<string, string> = {};
+    if (listenbrainz.userToken) {
+      headers.Authorization = `Token ${listenbrainz.userToken}`;
+    }
     super(
-      'https://api.listenbrainz.org/1',
+      listenbrainz.apiBaseUrl || 'https://api.listenbrainz.org/1',
       {},
       {
+        headers,
         nodeCache: cacheManager.getCache('listenbrainz').data,
         rateLimit: {
           maxRequests: 20,
@@ -21,6 +30,7 @@ class ListenBrainzAPI extends ExternalAPI {
         },
       }
     );
+    this.webBaseUrl = listenbrainz.webBaseUrl || 'https://listenbrainz.org';
   }
 
   public async getAlbum(mbid: string): Promise<LbAlbumDetails> {
@@ -29,14 +39,13 @@ class ListenBrainzAPI extends ExternalAPI {
         `/album/${mbid}`,
         {},
         {
-          baseURL: 'https://listenbrainz.org',
+          baseURL: this.webBaseUrl,
         },
         43200
       );
     } catch (e) {
       throw new Error(
-        `[ListenBrainz] Failed to fetch album details: ${
-          e instanceof Error ? e.message : 'Unknown error'
+        `[ListenBrainz] Failed to fetch album details: ${e instanceof Error ? e.message : 'Unknown error'
         }`
       );
     }
@@ -48,14 +57,13 @@ class ListenBrainzAPI extends ExternalAPI {
         `/artist/${mbid}`,
         {},
         {
-          baseURL: 'https://listenbrainz.org',
+          baseURL: this.webBaseUrl,
         },
         43200
       );
     } catch (e) {
       throw new Error(
-        `[ListenBrainz] Failed to fetch artist details: ${
-          e instanceof Error ? e.message : 'Unknown error'
+        `[ListenBrainz] Failed to fetch artist details: ${e instanceof Error ? e.message : 'Unknown error'
         }`
       );
     }

@@ -19,6 +19,7 @@ const messages = defineMessages('components.Settings', {
   menuJobs: 'Jobs & Cache',
   menuAbout: 'About',
   menuMetadataProviders: 'Metadata Providers',
+  menuMusicMetadata: 'Music Metadata',
 });
 
 type SettingsLayoutProps = {
@@ -41,15 +42,15 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
     },
     settings.currentSettings.mediaServerType === MediaServerType.PLEX
       ? {
-          text: intl.formatMessage(messages.menuPlexSettings),
-          route: '/settings/plex',
-          regex: /^\/settings\/plex/,
-        }
+        text: intl.formatMessage(messages.menuPlexSettings),
+        route: '/settings/plex',
+        regex: /^\/settings\/plex/,
+      }
       : {
-          text: getAvailableMediaServerName(),
-          route: '/settings/jellyfin',
-          regex: /^\/settings\/jellyfin/,
-        },
+        text: getAvailableMediaServerName(),
+        route: '/settings/jellyfin',
+        regex: /^\/settings\/jellyfin/,
+      },
     {
       text: intl.formatMessage(messages.menuServices),
       route: '/settings/services',
@@ -64,6 +65,11 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       text: intl.formatMessage(messages.menuMetadataProviders),
       route: '/settings/metadata',
       regex: /^\/settings\/metadata/,
+    },
+    {
+      text: intl.formatMessage(messages.menuMusicMetadata),
+      route: '/settings/music-metadata',
+      regex: /^\/settings\/music-metadata/,
     },
     {
       text: intl.formatMessage(messages.menuNotifications),
