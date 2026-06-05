@@ -123,6 +123,16 @@ export interface MetadataSettings {
   anime: MetadataProviderType;
 }
 
+export interface MusicBrainzSettings {
+  baseUrl: string;
+  authToken: string;
+  maxRPS: number;
+}
+
+export interface MusicMetadataSettings {
+  musicbrainz: MusicBrainzSettings;
+}
+
 export interface ProxySettings {
   enabled: boolean;
   hostname: string;
@@ -390,6 +400,7 @@ export interface AllSettings {
   jobs: Record<JobId, JobSettings>;
   network: NetworkSettings;
   metadataSettings: MetadataSettings;
+  musicMetadata: MusicMetadataSettings;
   migrations: string[];
 }
 
@@ -458,6 +469,13 @@ class Settings {
       metadataSettings: {
         tv: MetadataProviderType.TMDB,
         anime: MetadataProviderType.TMDB,
+      },
+      musicMetadata: {
+        musicbrainz: {
+          baseUrl: 'https://musicbrainz.org',
+          authToken: '',
+          maxRPS: 1,
+        },
       },
       radarr: [],
       sonarr: [],
@@ -682,6 +700,14 @@ class Settings {
       this.data.metadataSettings,
       data
     );
+  }
+
+  get musicMetadata(): MusicMetadataSettings {
+    return this.data.musicMetadata;
+  }
+
+  set musicMetadata(data: MusicMetadataSettings) {
+    this.data.musicMetadata = mergeSettings(this.data.musicMetadata, data);
   }
 
   get radarr(): RadarrSettings[] {
