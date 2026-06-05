@@ -1,8 +1,4 @@
-import useToasts from '@app/hooks/useToasts';
-import globalMessages from '@app/i18n/globalMessages';
 import { MediaStatus } from '@server/constants/media';
-import { useEffect } from 'react';
-import { useIntl } from 'react-intl';
 import useSWRInfinite from 'swr/infinite';
 import useSettings from './useSettings';
 import { Permission, useUser } from './useUser';
@@ -15,7 +11,7 @@ export interface BaseSearchResult<T> {
 }
 
 interface BaseMedia {
-  id: number;
+  id: number | string;
   mediaType: string;
   mediaInfo?: {
     status: MediaStatus;
@@ -54,7 +50,7 @@ export const encodeURIExtraParams = (string: string): string => {
 const useDiscover = <
   T extends BaseMedia,
   S = Record<string, never>,
-  O = Record<string, unknown>,
+  O = Record<string, unknown>
 >(
   endpoint: string,
   options?: O,
@@ -62,8 +58,6 @@ const useDiscover = <
 ): DiscoverResult<T, S> => {
   const settings = useSettings();
   const { hasPermission } = useUser();
-  const { addToast } = useToasts();
-  const intl = useIntl();
   const { data, error, size, setSize, isValidating, mutate } = useSWRInfinite<
     BaseSearchResult<T> & S
   >(
@@ -89,12 +83,10 @@ const useDiscover = <
     {
       initialSize: 3,
       revalidateFirstPage: false,
-      dedupingInterval: 30000,
-      revalidateOnFocus: false,
     }
   );
 
-  const resultIds: Set<number> = new Set<number>();
+  const resultIds: Set<string | number> = new Set<string | number>();
 
   const isLoadingInitialData = !data && !error;
   const isLoadingMore =
@@ -124,7 +116,10 @@ const useDiscover = <
   if (settings.currentSettings.hideAvailable && hideAvailable) {
     titles = titles.filter(
       (i) =>
-        (i.mediaType === 'movie' || i.mediaType === 'tv') &&
+        (i.mediaType === 'movie' ||
+          i.mediaType === 'tv' ||
+          i.mediaType === 'album' ||
+          i.mediaType === 'artist') &&
         i.mediaInfo?.status !== MediaStatus.AVAILABLE &&
         i.mediaInfo?.status !== MediaStatus.PARTIALLY_AVAILABLE
     );
@@ -137,7 +132,10 @@ const useDiscover = <
   ) {
     titles = titles.filter(
       (i) =>
-        (i.mediaType === 'movie' || i.mediaType === 'tv') &&
+        (i.mediaType === 'movie' ||
+          i.mediaType === 'tv' ||
+          i.mediaType === 'album' ||
+          i.mediaType === 'artist') &&
         i.mediaInfo?.status !== MediaStatus.BLOCKLISTED
     );
   }
@@ -149,23 +147,13 @@ const useDiscover = <
     (!!data && (data[data?.length - 1]?.totalResults ?? 0) <= size * 20) ||
     (!!data && (data[data?.length - 1]?.totalResults ?? 0) < 41);
 
-  useEffect(() => {
-    if (error && titles.length) {
-      addToast(intl.formatMessage(globalMessages.error), {
-        appearance: 'error',
-        autoDismiss: true,
-      });
-      console.error('Error while fetching discover titles:', error);
-    }
-  }, [data, error, addToast, intl, titles.length]);
-
   return {
     isLoadingInitialData,
     isLoadingMore,
     fetchMore,
     isEmpty,
     isReachingEnd,
-    error: error && titles.length ? null : error,
+    error,
     titles,
     firstResultData: data?.[0],
     mutate,

@@ -2,6 +2,7 @@ import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
+import SensitiveInput from '@app/components/Common/SensitiveInput';
 import MetadataSelector, {
   MetadataProviderType,
 } from '@app/components/MetadataSelector';
@@ -10,7 +11,7 @@ import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
-import { Form, Formik } from 'formik';
+import { Field, Form, Formik } from 'formik';
 import { useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
@@ -39,6 +40,20 @@ const messages = defineMessages('components.Settings', {
   connectionTestFailed: 'Connection test failed',
   failedToSaveMetadataSettings: 'Failed to save metadata provider settings',
   metadataSettingsSaved: 'Metadata provider settings saved',
+  metadataProviderConfiguration: 'Metadata Provider Configuration',
+  metadataProviderConfigurationDescription:
+    'Configure connection settings for the metadata providers used by music. Point these at self-hosted mirrors to bypass public rate limits.',
+  musicbrainz: 'MusicBrainz',
+  listenbrainz: 'ListenBrainz',
+  baseUrl: 'Base URL',
+  apiBaseUrl: 'API base URL',
+  webBaseUrl: 'Web base URL',
+  userAgent: 'User-Agent',
+  maxRPS: 'Max requests per second',
+  authToken: 'Auth token',
+  userToken: 'User token',
+  musicMetadataSaved: 'Music metadata settings saved',
+  musicMetadataSaveFailed: 'Failed to save music metadata settings',
 });
 
 type ProviderStatus = 'ok' | 'not tested' | 'failed';
@@ -46,6 +61,8 @@ type ProviderStatus = 'ok' | 'not tested' | 'failed';
 interface ProviderResponse {
   tvdb: ProviderStatus;
   tmdb: ProviderStatus;
+  musicbrainz: ProviderStatus;
+  listenbrainz: ProviderStatus;
 }
 
 interface MetadataValues {
@@ -57,6 +74,30 @@ interface MetadataSettings {
   metadata: MetadataValues;
 }
 
+interface MusicBrainzSettings {
+  baseUrl: string;
+  userAgent: string;
+  authToken: string;
+  maxRPS: number;
+}
+
+interface ListenBrainzSettings {
+  apiBaseUrl: string;
+  webBaseUrl: string;
+  userToken: string;
+}
+
+interface MusicMetadataSettings {
+  musicbrainz: MusicBrainzSettings;
+  listenbrainz: ListenBrainzSettings;
+}
+
+const mapStatusValue = (status: string): ProviderStatus => {
+  if (status === 'ok') return 'ok';
+  if (status === 'failed') return 'failed';
+  return 'not tested';
+};
+
 const SettingsMetadata = () => {
   const intl = useIntl();
   const { addToast } = useToasts();
@@ -64,6 +105,8 @@ const SettingsMetadata = () => {
   const defaultStatus: ProviderResponse = {
     tmdb: 'not tested',
     tvdb: 'not tested',
+    musicbrainz: 'not tested',
+    listenbrainz: 'not tested',
   };
 
   const [providerStatus, setProviderStatus] =
@@ -86,6 +129,9 @@ const SettingsMetadata = () => {
     }
   );
 
+  const { data: musicData, mutate: mutateMusic } =
+    useSWR<MusicMetadataSettings>('/api/v1/settings/music-metadata');
+
   const testConnection = async (
     values: MetadataValues
   ): Promise<ProviderResponse> => {
@@ -96,46 +142,58 @@ const SettingsMetadata = () => {
       values.tv === MetadataProviderType.TVDB ||
       values.anime === MetadataProviderType.TVDB;
 
-    const testData = {
-      tmdb: useTmdb,
-      tvdb: useTvdb,
+    const tvDbTmdbPromise = axios
+      .post<{
+        success: boolean;
+        tests: { tvdb: ProviderStatus; tmdb: ProviderStatus };
+      }>('/api/v1/settings/metadatas/test', { tmdb: useTmdb, tvdb: useTvdb })
+      .then((r) => r.data.tests)
+      .catch((e) => {
+        if (axios.isAxiosError(e) && e.response?.data?.tests) {
+          return e.response.data.tests as {
+            tvdb: ProviderStatus;
+            tmdb: ProviderStatus;
+          };
+        }
+        return { tvdb: 'failed' as const, tmdb: 'failed' as const };
+      });
+
+    const musicPromise = axios
+      .post<{
+        success: boolean;
+        tests: {
+          musicbrainz: ProviderStatus;
+          listenbrainz: ProviderStatus;
+        };
+      }>('/api/v1/settings/music-metadata/test')
+      .then((r) => r.data.tests)
+      .catch((e) => {
+        if (axios.isAxiosError(e) && e.response?.data?.tests) {
+          return e.response.data.tests as {
+            musicbrainz: ProviderStatus;
+            listenbrainz: ProviderStatus;
+          };
+        }
+        return {
+          musicbrainz: 'failed' as const,
+          listenbrainz: 'failed' as const,
+        };
+      });
+
+    const [tvdbTmdb, music] = await Promise.all([
+      tvDbTmdbPromise,
+      musicPromise,
+    ]);
+
+    const newStatus: ProviderResponse = {
+      tmdb: useTmdb ? mapStatusValue(tvdbTmdb.tmdb) : 'not tested',
+      tvdb: useTvdb ? mapStatusValue(tvdbTmdb.tvdb) : 'not tested',
+      musicbrainz: mapStatusValue(music.musicbrainz),
+      listenbrainz: mapStatusValue(music.listenbrainz),
     };
 
-    try {
-      const response = await axios.post<{
-        success: boolean;
-        tests: ProviderResponse;
-      }>('/api/v1/settings/metadatas/test', testData);
-
-      const newStatus: ProviderResponse = {
-        tmdb: useTmdb ? response.data.tests.tmdb : 'not tested',
-        tvdb: useTvdb ? response.data.tests.tvdb : 'not tested',
-      };
-
-      setProviderStatus(newStatus);
-      return newStatus;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response) {
-        // If we receive an error response with a valid format
-        const errorData = error.response.data as {
-          success: boolean;
-          tests: ProviderResponse;
-        };
-
-        if (errorData.tests) {
-          const newStatus: ProviderResponse = {
-            tmdb: useTmdb ? errorData.tests.tmdb : 'not tested',
-            tvdb: useTvdb ? errorData.tests.tvdb : 'not tested',
-          };
-
-          setProviderStatus(newStatus);
-          return newStatus;
-        }
-      }
-
-      // In case of error without usable data
-      throw new Error('Failed to test connection', { cause: error });
-    }
+    setProviderStatus(newStatus);
+    return newStatus;
   };
 
   const saveSettings = async (
@@ -146,30 +204,20 @@ const SettingsMetadata = () => {
         success: boolean;
         tv: MetadataProviderType;
         anime: MetadataProviderType;
-        tests?: {
-          tvdb: ProviderStatus;
-          tmdb: ProviderStatus;
-        };
+        tests?: { tvdb: ProviderStatus; tmdb: ProviderStatus };
       }>('/api/v1/settings/metadatas', {
         tv: values.tv,
         anime: values.anime,
       });
 
-      // Update metadata provider status if available
       if (response.data.tests) {
-        const mapStatusValue = (status: string): ProviderStatus => {
-          if (status === 'ok') return 'ok';
-          if (status === 'failed') return 'failed';
-          return 'not tested';
-        };
-
-        setProviderStatus({
-          tmdb: mapStatusValue(response.data.tests.tmdb),
-          tvdb: mapStatusValue(response.data.tests.tvdb),
-        });
+        setProviderStatus((prev) => ({
+          ...prev,
+          tmdb: mapStatusValue(response.data.tests!.tmdb),
+          tvdb: mapStatusValue(response.data.tests!.tvdb),
+        }));
       }
 
-      // Adapt the response to the format expected by the component
       return {
         metadata: {
           tv: response.data.tv,
@@ -177,32 +225,19 @@ const SettingsMetadata = () => {
         },
       };
     } catch (error) {
-      // Retrieve test data in case of error
       if (axios.isAxiosError(error) && error.response?.data) {
         const errorData = error.response.data as {
           success: boolean;
-          tests?: {
-            tvdb: string;
-            tmdb: string;
-          };
+          tests?: { tvdb: string; tmdb: string };
         };
-
-        // If test data is available in the error response
         if (errorData.tests) {
-          const mapStatusValue = (status: string): ProviderStatus => {
-            if (status === 'ok') return 'ok';
-            if (status === 'failed') return 'failed';
-            return 'not tested';
-          };
-
-          // Update metadata provider status with error data
-          setProviderStatus({
-            tmdb: mapStatusValue(errorData.tests.tmdb),
-            tvdb: mapStatusValue(errorData.tests.tvdb),
-          });
+          setProviderStatus((prev) => ({
+            ...prev,
+            tmdb: mapStatusValue(errorData.tests!.tmdb),
+            tvdb: mapStatusValue(errorData.tests!.tvdb),
+          }));
         }
       }
-
       throw new Error('Failed to save Metadata settings', { cause: error });
     }
   };
@@ -259,6 +294,20 @@ const SettingsMetadata = () => {
     anime: MetadataProviderType.TMDB,
   };
 
+  const musicInitialValues: MusicMetadataSettings = musicData ?? {
+    musicbrainz: {
+      baseUrl: 'https://musicbrainz.org/ws/2',
+      userAgent: 'Seerr (https://github.com/seerr-team/seerr)',
+      authToken: '',
+      maxRPS: 1,
+    },
+    listenbrainz: {
+      apiBaseUrl: 'https://api.listenbrainz.org/1',
+      webBaseUrl: 'https://listenbrainz.org',
+      userToken: '',
+    },
+  };
+
   return (
     <>
       <PageTitle
@@ -283,7 +332,7 @@ const SettingsMetadata = () => {
         </h4>
         <div className="flex flex-col space-y-3">
           <div className="flex items-center">
-            <span className="mr-2 w-24">TheMovieDB:</span>
+            <span className="mr-2 w-32">TheMovieDB:</span>
             <span
               className={`text-sm ${getStatusClass(providerStatus.tmdb)}`}
               data-testid="tmdb-status-container"
@@ -294,13 +343,35 @@ const SettingsMetadata = () => {
             </span>
           </div>
           <div className="flex items-center">
-            <span className="mr-2 w-24">TheTVDB:</span>
+            <span className="mr-2 w-32">TheTVDB:</span>
             <span
               className={`text-sm ${getStatusClass(providerStatus.tvdb)}`}
               data-testid="tvdb-status"
             >
               <Badge badgeType={getBadgeType(providerStatus.tvdb)}>
                 {getStatusMessage(providerStatus.tvdb)}
+              </Badge>
+            </span>
+          </div>
+          <div className="flex items-center">
+            <span className="mr-2 w-32">MusicBrainz:</span>
+            <span
+              className={`text-sm ${getStatusClass(providerStatus.musicbrainz)}`}
+              data-testid="musicbrainz-status"
+            >
+              <Badge badgeType={getBadgeType(providerStatus.musicbrainz)}>
+                {getStatusMessage(providerStatus.musicbrainz)}
+              </Badge>
+            </span>
+          </div>
+          <div className="flex items-center">
+            <span className="mr-2 w-32">ListenBrainz:</span>
+            <span
+              className={`text-sm ${getStatusClass(providerStatus.listenbrainz)}`}
+              data-testid="listenbrainz-status"
+            >
+              <Badge badgeType={getBadgeType(providerStatus.listenbrainz)}>
+                {getStatusMessage(providerStatus.listenbrainz)}
               </Badge>
             </span>
           </div>
@@ -402,39 +473,27 @@ const SettingsMetadata = () => {
                                 intl.formatMessage(
                                   messages.tvdbProviderDoesnotWork
                                 ),
-                                {
-                                  appearance: 'error',
-                                  autoDismiss: true,
-                                }
+                                { appearance: 'error', autoDismiss: true }
                               );
                             } else if (resp.tmdb === 'failed') {
                               addToast(
                                 intl.formatMessage(
                                   messages.tmdbProviderDoesnotWork
                                 ),
-                                {
-                                  appearance: 'error',
-                                  autoDismiss: true,
-                                }
+                                { appearance: 'error', autoDismiss: true }
                               );
                             } else {
                               addToast(
                                 intl.formatMessage(
                                   messages.allChosenProvidersAreOperational
                                 ),
-                                {
-                                  appearance: 'success',
-                                  autoDismiss: true,
-                                }
+                                { appearance: 'success', autoDismiss: true }
                               );
                             }
                           } catch {
                             addToast(
                               intl.formatMessage(messages.connectionTestFailed),
-                              {
-                                appearance: 'error',
-                                autoDismiss: true,
-                              }
+                              { appearance: 'error', autoDismiss: true }
                             );
                           } finally {
                             setIsTesting(false);
@@ -470,6 +529,180 @@ const SettingsMetadata = () => {
               </Form>
             );
           }}
+        </Formik>
+      </div>
+
+      <div className="section">
+        <div className="mb-6">
+          <h2 className="heading">
+            {intl.formatMessage(messages.metadataProviderConfiguration)}
+          </h2>
+          <p className="description">
+            {intl.formatMessage(
+              messages.metadataProviderConfigurationDescription
+            )}
+          </p>
+        </div>
+
+        <Formik
+          initialValues={musicInitialValues}
+          enableReinitialize
+          onSubmit={async (values) => {
+            try {
+              await axios.put('/api/v1/settings/music-metadata', values);
+              await mutateMusic();
+              addToast(intl.formatMessage(messages.musicMetadataSaved), {
+                appearance: 'success',
+                autoDismiss: true,
+              });
+            } catch {
+              addToast(intl.formatMessage(messages.musicMetadataSaveFailed), {
+                appearance: 'error',
+                autoDismiss: true,
+              });
+            }
+          }}
+        >
+          {({ isSubmitting, isValid }) => (
+            <Form className="section">
+              <div className="mb-4 mt-2">
+                <h4 className="heading">
+                  {intl.formatMessage(messages.musicbrainz)}
+                </h4>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="musicbrainz.baseUrl" className="text-label">
+                  {intl.formatMessage(messages.baseUrl)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      id="musicbrainz.baseUrl"
+                      name="musicbrainz.baseUrl"
+                      type="text"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="musicbrainz.userAgent" className="text-label">
+                  {intl.formatMessage(messages.userAgent)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      id="musicbrainz.userAgent"
+                      name="musicbrainz.userAgent"
+                      type="text"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="musicbrainz.maxRPS" className="text-label">
+                  {intl.formatMessage(messages.maxRPS)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      id="musicbrainz.maxRPS"
+                      name="musicbrainz.maxRPS"
+                      type="number"
+                      min={1}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="musicbrainz.authToken" className="text-label">
+                  {intl.formatMessage(messages.authToken)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <SensitiveInput
+                      as="field"
+                      id="musicbrainz.authToken"
+                      name="musicbrainz.authToken"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4 mt-8">
+                <h4 className="heading">
+                  {intl.formatMessage(messages.listenbrainz)}
+                </h4>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="listenbrainz.apiBaseUrl" className="text-label">
+                  {intl.formatMessage(messages.apiBaseUrl)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      id="listenbrainz.apiBaseUrl"
+                      name="listenbrainz.apiBaseUrl"
+                      type="text"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="listenbrainz.webBaseUrl" className="text-label">
+                  {intl.formatMessage(messages.webBaseUrl)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      id="listenbrainz.webBaseUrl"
+                      name="listenbrainz.webBaseUrl"
+                      type="text"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="listenbrainz.userToken" className="text-label">
+                  {intl.formatMessage(messages.userToken)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <SensitiveInput
+                      as="field"
+                      id="listenbrainz.userToken"
+                      name="listenbrainz.userToken"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="actions">
+                <div className="flex justify-end">
+                  <span className="ml-3 inline-flex rounded-md shadow-sm">
+                    <Button
+                      buttonType="primary"
+                      type="submit"
+                      disabled={isSubmitting || !isValid}
+                    >
+                      <ArrowDownOnSquareIcon />
+                      <span>
+                        {isSubmitting
+                          ? intl.formatMessage(globalMessages.saving)
+                          : intl.formatMessage(globalMessages.save)}
+                      </span>
+                    </Button>
+                  </span>
+                </div>
+              </div>
+            </Form>
+          )}
         </Formik>
       </div>
     </>

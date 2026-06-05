@@ -1,3 +1,4 @@
+import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import { MediaStatus, MediaType } from '@server/constants/media';
@@ -10,7 +11,7 @@ import type { DownloadingItem } from '@server/lib/downloadtracker';
 import downloadTracker from '@server/lib/downloadtracker';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
+import { DbAwareColumn } from '@server/utils/DbColumnHelper';
 import { getHostname } from '@server/utils/getHostname';
 import {
   AfterLoad,
@@ -20,42 +21,48 @@ import {
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import Issue from './Issue';
 import { MediaRequest } from './MediaRequest';
 import Season from './Season';
 
 @Entity()
-@Index(['tmdbId', 'mediaType'])
 class Media {
   public static async getRelatedMedia(
     user: User | undefined,
-    items: { tmdbId: number; mediaType: string }[]
+    ids: number | number[] | string | string[]
   ): Promise<Media[]> {
     const mediaRepository = getRepository(Media);
 
     try {
-      if (items.length === 0) {
-        return [];
+      let finalIds: (number | string)[];
+      if (!Array.isArray(ids)) {
+        finalIds = [ids];
+      } else {
+        finalIds = ids;
       }
 
-      const finalIds = [...new Set(items.map((i) => i.tmdbId))];
+      if (finalIds.length === 0) {
+        return [];
+      }
 
       const media = await mediaRepository
         .createQueryBuilder('media')
         .leftJoinAndSelect(
           'media.watchlists',
           'watchlist',
-          'media.id= watchlist.media and watchlist.requestedBy = :userId',
+          'media.id = watchlist.media and watchlist.requestedBy = :userId',
           { userId: user?.id }
-        ) //,
-        .where(' media.tmdbId in (:...finalIds)', { finalIds })
+        )
+        .where(
+          typeof finalIds[0] === 'string'
+            ? 'media.mbId IN (:...finalIds)'
+            : 'media.tmdbId IN (:...finalIds)',
+          { finalIds }
+        )
         .getMany();
 
-      return media.filter((m) =>
-        items.some((i) => i.tmdbId === m.tmdbId && i.mediaType === m.mediaType)
-      );
+      return media;
     } catch (e) {
       logger.error(e.message);
       return [];
@@ -63,14 +70,17 @@ class Media {
   }
 
   public static async getMedia(
-    id: number,
+    id: number | string,
     mediaType: MediaType
   ): Promise<Media | undefined> {
     const mediaRepository = getRepository(Media);
 
     try {
       const media = await mediaRepository.findOne({
-        where: { tmdbId: id, mediaType: mediaType },
+        where:
+          typeof id === 'string'
+            ? { mbId: id, mediaType }
+            : { tmdbId: id, mediaType },
         relations: { requests: true, issues: true },
       });
 
@@ -87,7 +97,7 @@ class Media {
   @Column({ type: 'varchar' })
   public mediaType: MediaType;
 
-  @Column()
+  @Column({ nullable: true })
   @Index()
   public tmdbId: number;
 
@@ -99,12 +109,14 @@ class Media {
   @Index()
   public imdbId?: string;
 
-  @Column({ type: 'int', default: MediaStatus.UNKNOWN })
+  @Column({ nullable: true })
   @Index()
+  public mbId?: string;
+
+  @Column({ type: 'int', default: MediaStatus.UNKNOWN })
   public status: MediaStatus;
 
   @Column({ type: 'int', default: MediaStatus.UNKNOWN })
-  @Index()
   public status4k: MediaStatus;
 
   @OneToMany(() => MediaRequest, (request) => request.media, {
@@ -130,9 +142,10 @@ class Media {
   @DbAwareColumn({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   public createdAt: Date;
 
-  @UpdateDateColumn({
-    type: resolveDbType('datetime'),
+  @DbAwareColumn({
+    type: 'datetime',
     default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
   })
   public updatedAt: Date;
 
@@ -155,7 +168,7 @@ class Media {
   })
   public mediaAddedAt: Date;
 
-  @Column({ nullable: true, type: 'int' })
+  @Column({ nullable: false, type: 'int', default: 0 })
   public serviceId?: number | null;
 
   @Column({ nullable: true, type: 'int' })
@@ -203,19 +216,6 @@ class Media {
     Object.assign(this, init);
   }
 
-  public resetServiceData(): void {
-    this.serviceId = null;
-    this.serviceId4k = null;
-    this.externalServiceId = null;
-    this.externalServiceId4k = null;
-    this.externalServiceSlug = null;
-    this.externalServiceSlug4k = null;
-    this.ratingKey = null;
-    this.ratingKey4k = null;
-    this.jellyfinMediaId = null;
-    this.jellyfinMediaId4k = null;
-  }
-
   @AfterLoad()
   public setPlexUrls(): void {
     const { machineId, webAppUrl } = getSettings().plex;
@@ -234,19 +234,19 @@ class Media {
         if (tautulliUrl) {
           this.tautulliUrl = `${tautulliUrl}/info?rating_key=${this.ratingKey}`;
         }
-      }
 
-      if (this.ratingKey4k) {
-        this.mediaUrl4k = `${
-          webAppUrl ? webAppUrl : 'https://app.plex.tv/desktop'
-        }#!/server/${machineId}/details?key=%2Flibrary%2Fmetadata%2F${
-          this.ratingKey4k
-        }`;
+        if (this.ratingKey4k) {
+          this.mediaUrl4k = `${
+            webAppUrl ? webAppUrl : 'https://app.plex.tv/desktop'
+          }#!/server/${machineId}/details?key=%2Flibrary%2Fmetadata%2F${
+            this.ratingKey4k
+          }`;
 
-        this.iOSPlexUrl4k = `plex://preplay/?metadataKey=%2Flibrary%2Fmetadata%2F${this.ratingKey4k}&server=${machineId}`;
+          this.iOSPlexUrl4k = `plex://preplay/?metadataKey=%2Flibrary%2Fmetadata%2F${this.ratingKey4k}&server=${machineId}`;
 
-        if (tautulliUrl) {
-          this.tautulliUrl4k = `${tautulliUrl}/info?rating_key=${this.ratingKey4k}`;
+          if (tautulliUrl) {
+            this.tautulliUrl4k = `${tautulliUrl}/info?rating_key=${this.ratingKey4k}`;
+          }
         }
       }
     } else {
@@ -332,6 +332,21 @@ class Media {
         }
       }
     }
+
+    if (this.mediaType === MediaType.MUSIC) {
+      if (this.serviceId !== null && this.externalServiceSlug !== null) {
+        const settings = getSettings();
+        const server = settings.lidarr.find(
+          (lidarr) => lidarr.id === this.serviceId
+        );
+
+        if (server) {
+          this.serviceUrl = server.externalUrl
+            ? `${server.externalUrl}/album/${this.externalServiceSlug}`
+            : LidarrAPI.buildUrl(server, `/album/${this.externalServiceSlug}`);
+        }
+      }
+    }
   }
 
   @AfterLoad()
@@ -384,6 +399,20 @@ class Media {
         this.downloadStatus4k = downloadTracker.getSeriesProgress(
           this.serviceId4k,
           this.externalServiceId4k
+        );
+      }
+    }
+
+    if (this.mediaType === MediaType.MUSIC) {
+      if (
+        this.externalServiceId !== undefined &&
+        this.externalServiceId !== null &&
+        this.serviceId !== undefined &&
+        this.serviceId !== null
+      ) {
+        this.downloadStatus = downloadTracker.getMusicProgress(
+          this.serviceId,
+          this.externalServiceId
         );
       }
     }

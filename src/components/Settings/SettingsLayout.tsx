@@ -41,15 +41,15 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
     },
     settings.currentSettings.mediaServerType === MediaServerType.PLEX
       ? {
-          text: intl.formatMessage(messages.menuPlexSettings),
-          route: '/settings/plex',
-          regex: /^\/settings\/plex/,
-        }
+        text: intl.formatMessage(messages.menuPlexSettings),
+        route: '/settings/plex',
+        regex: /^\/settings\/plex/,
+      }
       : {
-          text: getAvailableMediaServerName(),
-          route: '/settings/jellyfin',
-          regex: /^\/settings\/jellyfin/,
-        },
+        text: getAvailableMediaServerName(),
+        route: '/settings/jellyfin',
+        regex: /^\/settings\/jellyfin/,
+      },
     {
       text: intl.formatMessage(messages.menuServices),
       route: '/settings/services',
