@@ -2,6 +2,7 @@ import NodeCache from 'node-cache';
 
 export type AvailableCacheIds =
   | 'tmdb'
+  | 'musicbrainz'
   | 'radarr'
   | 'sonarr'
   | 'rt'
@@ -10,7 +11,8 @@ export type AvailableCacheIds =
   | 'plexguid'
   | 'plextv'
   | 'plexwatchlist'
-  | 'tvdb';
+  | 'tvdb'
+  | 'lidarr';
 
 const DEFAULT_TTL = 300;
 const DEFAULT_CHECK_PERIOD = 120;
@@ -48,8 +50,13 @@ class CacheManager {
       stdTtl: 21600,
       checkPeriod: 60 * 30,
     }),
+    musicbrainz: new Cache('musicbrainz', 'MusicBrainz API', {
+      stdTtl: 21600,
+      checkPeriod: 60 * 30,
+    }),
     radarr: new Cache('radarr', 'Radarr API'),
     sonarr: new Cache('sonarr', 'Sonarr API'),
+    lidarr: new Cache('lidarr', 'Lidarr API'),
     rt: new Cache('rt', 'Rotten Tomatoes API', {
       stdTtl: 43200,
       checkPeriod: 60 * 30,
