@@ -90,6 +90,11 @@ export interface RadarrSettings extends DVRSettings {
   minimumAvailability: string;
 }
 
+export interface LidarrSettings extends DVRSettings {
+  activeMetadataProfileId: number;
+  activeMetadataProfileName: string;
+}
+
 export interface SonarrSettings extends DVRSettings {
   seriesType: 'standard' | 'daily' | 'anime';
   animeSeriesType: 'standard' | 'daily' | 'anime';
@@ -116,6 +121,15 @@ export enum MetadataProviderType {
 export interface MetadataSettings {
   tv: MetadataProviderType;
   anime: MetadataProviderType;
+}
+
+export interface CoverArtArchiveSettings {
+  maxRPS: number;
+  maxRequests: number;
+}
+
+export interface ArtworkProvidersSettings {
+  coverArtArchive: CoverArtArchiveSettings;
 }
 
 export interface ProxySettings {
@@ -379,11 +393,13 @@ export interface AllSettings {
   tautulli: TautulliSettings;
   radarr: RadarrSettings[];
   sonarr: SonarrSettings[];
+  lidarr: LidarrSettings[];
   public: PublicSettings;
   notifications: NotificationSettings;
   jobs: Record<JobId, JobSettings>;
   network: NetworkSettings;
   metadataSettings: MetadataSettings;
+  artworkProviders: ArtworkProvidersSettings;
   migrations: string[];
 }
 
@@ -453,8 +469,15 @@ class Settings {
         tv: MetadataProviderType.TMDB,
         anime: MetadataProviderType.TMDB,
       },
+      artworkProviders: {
+        coverArtArchive: {
+          maxRPS: 50,
+          maxRequests: 20,
+        },
+      },
       radarr: [],
       sonarr: [],
+      lidarr: [],
       public: {
         initialized: false,
       },
@@ -677,6 +700,17 @@ class Settings {
     );
   }
 
+  get artworkProviders(): ArtworkProvidersSettings {
+    return this.data.artworkProviders;
+  }
+
+  set artworkProviders(data: ArtworkProvidersSettings) {
+    this.data.artworkProviders = mergeSettings(
+      this.data.artworkProviders,
+      data
+    );
+  }
+
   get radarr(): RadarrSettings[] {
     return this.data.radarr;
   }
@@ -691,6 +725,14 @@ class Settings {
 
   set sonarr(data: SonarrSettings[]) {
     this.data.sonarr = data;
+  }
+
+  get lidarr(): LidarrSettings[] {
+    return this.data.lidarr;
+  }
+
+  set lidarr(data: LidarrSettings[]) {
+    this.data.lidarr = data;
   }
 
   get public(): PublicSettings {
